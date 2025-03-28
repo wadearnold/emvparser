@@ -28,53 +28,78 @@ type EMVTagFormat struct {
 	// MinLength is the minimum length in bytes
 	MinLength int
 
+	// MaxLength is the maximum length in bytes (0 means no maximum)
+	MaxLength int
+
 	// PadLeft indicates whether to pad on the left with zeros (true) or right (false)
 	PadLeft bool
 
 	// Format is an optional format spec used for special cases
 	Format string
+
+	// Description provides a human-readable description of the tag
+	Description string
 }
 
 // EMVTagFormats maps EMV tags to their expected format
 var EMVTagFormats = map[string]EMVTagFormat{
-	// Application Interchange Profile
-	"82": {MinLength: 2, PadLeft: true},
+	"82":      {MinLength: 2, MaxLength: 2, PadLeft: true, Description: "Application Interchange Profile"},
+	"57":      {MinLength: 0, MaxLength: 37, PadLeft: false, Description: "Track 2 Equivalent Data"},
+	"5F20":    {MinLength: 0, MaxLength: 26, PadLeft: false, Description: "Cardholder Name"},
+	"5F24":    {MinLength: 3, MaxLength: 3, PadLeft: true, Description: "Application Expiration Date"},
+	"9F10":    {MinLength: 0, MaxLength: 32, PadLeft: false, Description: "Issuer Application Data"},
+	"9F26":    {MinLength: 8, MaxLength: 8, PadLeft: true, Description: "Application Cryptogram"},
+	"9F27":    {MinLength: 1, MaxLength: 1, PadLeft: true, Description: "Cryptogram Information Data"},
+	"9F36":    {MinLength: 2, MaxLength: 2, PadLeft: true, Description: "Application Transaction Counter"},
+	"9F37":    {MinLength: 4, MaxLength: 4, PadLeft: true, Description: "Unpredictable Number"},
+	"9F6C":    {MinLength: 2, MaxLength: 8, PadLeft: true, Description: "Card Transaction Qualifier"},
+	"9F6E":    {MinLength: 4, MaxLength: 4, PadLeft: true, Description: "Transaction Status Information"},
+	"77":      {MinLength: 0, MaxLength: 0, PadLeft: false, Description: "Response Message Template"},
+	"DEFAULT": {MinLength: 0, MaxLength: 0, PadLeft: false, Description: "Default Tag Format"},
+}
 
-	// Track 2 Equivalent Data
-	"57": {MinLength: 0, PadLeft: false},
+// EMVTagMap provides a mapping from EMV tag to struct field
+type EMVTagMap map[string]fieldInfo
 
-	// Cardholder Name
-	"5F20": {MinLength: 0, PadLeft: false},
+type fieldInfo struct {
+	Index int
+	Field reflect.StructField
+}
 
-	// Application Expiration Date
-	"5F24": {MinLength: 3, PadLeft: true},
+// BuildEMVTagMap creates a mapping from EMV tags to struct fields
+func BuildEMVTagMap(structType reflect.Type) EMVTagMap {
+	tagMap := make(EMVTagMap)
 
-	// Issuer Application Data
-	"9F10": {MinLength: 0, PadLeft: false},
+	for i := 0; i < structType.NumField(); i++ {
+		field := structType.Field(i)
 
-	// Application Cryptogram
-	"9F26": {MinLength: 8, PadLeft: true},
+		// Get the emv tag value from the struct tag
+		tagValue := field.Tag.Get("emv")
+		if tagValue != "" {
+			// Store field info in the map with the EMV tag as key
+			tagMap[tagValue] = fieldInfo{
+				Index: i,
+				Field: field,
+			}
+		}
+	}
 
-	// Cryptogram Information Data
-	"9F27": {MinLength: 1, PadLeft: true},
+	return tagMap
+}
 
-	// Application Transaction Counter
-	"9F36": {MinLength: 2, PadLeft: true},
+// EMVParser handles parsing and mapping of EMV data
+type EMVParser struct {
+	tagMap EMVTagMap
+}
 
-	// Unpredictable Number
-	"9F37": {MinLength: 4, PadLeft: true},
+// NewEMVParser creates a new EMV parser for the given struct type
+func NewEMVParser() *EMVParser {
+	// Build tag map from the EMVData struct
+	tagMap := BuildEMVTagMap(reflect.TypeOf(EMVData{}))
 
-	// Card Transaction Qualifier
-	"9F6C": {MinLength: 2, PadLeft: true},
-
-	// Transaction Status Information
-	"9F6E": {MinLength: 4, PadLeft: true},
-
-	// Response Message Template
-	"77": {MinLength: 0, PadLeft: false},
-
-	// Default for other tags
-	"DEFAULT": {MinLength: 0, PadLeft: false},
+	return &EMVParser{
+		tagMap: tagMap,
+	}
 }
 
 // Simplified EMV TLV parser for this test
@@ -394,29 +419,6 @@ func isZeroValue(v reflect.Value) bool {
 	}
 }
 
-// Print EMV data in a readable format
-func printEMVData(data *EMVData) {
-	v := reflect.ValueOf(data).Elem()
-	t := v.Type()
-
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
-		fieldName := t.Field(i).Name
-		tag := t.Field(i).Tag.Get("emv")
-
-		if isZeroValue(field) {
-			continue
-		}
-
-		fmt.Printf("Field: %s (Tag: %s)\n", fieldName, tag)
-		if field.Kind() == reflect.Slice && field.Type().Elem().Kind() == reflect.Uint8 {
-			fmt.Printf("  Value (hex): %X\n", field.Bytes())
-		} else if field.Kind() == reflect.String {
-			fmt.Printf("  Value: %s\n", field.String())
-		}
-	}
-}
-
 // Compare original and re-encoded EMV data
 func compareEMVData(original, reEncoded []byte) {
 	if len(original) != len(reEncoded) {
@@ -637,4 +639,73 @@ func bytesEqual(a, b []byte) bool {
 		}
 	}
 	return true
+}
+
+// Parse EMV data using the parser
+func (parser *EMVParser) Parse(data []byte) (*EMVData, error) {
+	tagValues := make(map[string][]byte)
+
+	// Simplified TLV parsing logic
+	pos := 0
+	for pos < len(data) {
+		// Extract tag, length, and value (similar to existing logic)
+		// Ensure 'tag' is defined and assigned a value
+		tag := []byte{} // Replace with the actual logic to extract the tag
+		tagHex := fmt.Sprintf("%X", tag)
+
+		// Extract value (replace with actual logic to extract the value)
+		value := []byte{} // Replace with the actual logic to extract the value
+
+		// Store in map
+		tagValues[tagHex] = value
+	}
+
+	// Create EMVData struct and populate fields
+	result := &EMVData{}
+	v := reflect.ValueOf(result).Elem()
+
+	for tag, value := range tagValues {
+		fieldInfo, ok := parser.tagMap[tag]
+		if !ok {
+			continue
+		}
+
+		field := v.Field(fieldInfo.Index)
+		if field.Kind() == reflect.Slice && field.Type().Elem().Kind() == reflect.Uint8 {
+			field.SetBytes(value)
+		} else if field.Kind() == reflect.String {
+			field.SetString(string(value))
+		}
+	}
+
+	return result, nil
+}
+
+// Marshal EMV data using the parser
+func (parser *EMVParser) Marshal(data *EMVData) ([]byte, error) {
+	result := []byte{}
+	v := reflect.ValueOf(data).Elem()
+
+	for tag, fieldInfo := range parser.tagMap {
+		field := v.Field(fieldInfo.Index)
+		if isZeroValue(field) {
+			continue
+		}
+
+		var value []byte
+		if field.Kind() == reflect.Slice && field.Type().Elem().Kind() == reflect.Uint8 {
+			value = field.Bytes()
+		} else if field.Kind() == reflect.String {
+			value = []byte(field.String())
+		}
+
+		// Apply formatting
+		value = formatValueForTag(value, tag)
+
+		// Encode TLV
+		tlv := encodeTLV(tag, value)
+		result = append(result, tlv...)
+	}
+
+	return result, nil
 }

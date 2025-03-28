@@ -3,6 +3,7 @@ package kernel
 import (
 	"encoding/hex"
 	"fmt"
+	"reflect"
 	"testing"
 )
 
@@ -31,9 +32,9 @@ func TestMarshalEMVData(t *testing.T) {
 		return
 	}
 
-	// Print parsed data
+	// Print parsed data with descriptions
 	fmt.Println("\n=== Parsed EMV Data ===")
-	printEMVData(parsedData)
+	printEMVDataWithDescriptions(parsedData)
 
 	// Re-encode the data
 	reEncodedData, err := marshalEMVData(parsedData)
@@ -61,4 +62,33 @@ func TestMarshalEMVData(t *testing.T) {
 
 	// Compare the original struct and re-parsed struct
 	compareStructs(parsedData, reparsedData)
+}
+
+// printEMVDataWithDescriptions prints the parsed EMV data with tag descriptions
+func printEMVDataWithDescriptions(data *EMVData) {
+	v := reflect.ValueOf(data).Elem()
+	t := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		fieldName := t.Field(i).Name
+		tag := t.Field(i).Tag.Get("emv")
+
+		if isZeroValue(field) {
+			continue
+		}
+
+		// Get the description from EMVTagFormats
+		description := "Unknown"
+		if format, ok := EMVTagFormats[tag]; ok {
+			description = format.Description
+		}
+
+		fmt.Printf("Field: %s (Tag: %s - %s)\n", fieldName, tag, description)
+		if field.Kind() == reflect.Slice && field.Type().Elem().Kind() == reflect.Uint8 {
+			fmt.Printf("  Value (hex): %X\n", field.Bytes())
+		} else if field.Kind() == reflect.String {
+			fmt.Printf("  Value: %s\n", field.String())
+		}
+	}
 }
