@@ -70,7 +70,7 @@ type fieldInfo struct {
 func BuildEMVTagMap(structType reflect.Type) EMVTagMap {
 	tagMap := make(EMVTagMap)
 
-	for i := 0; i < structType.NumField(); i++ {
+	for i := range structType.NumField() {
 		field := structType.Field(i)
 
 		// Get the emv tag value from the struct tag
@@ -148,7 +148,7 @@ func parseEMVData(data []byte) (*EMVData, error) {
 
 			// Calculate length from multiple bytes
 			valueLen = 0
-			for i := 0; i < lenBytes; i++ {
+			for range lenBytes {
 				valueLen = (valueLen << 8) | int(data[pos])
 				pos++
 			}
