@@ -7,13 +7,12 @@ import (
 	"testing"
 )
 
-// TestMarshalEMVData tests the EMV data marshalling
-func TestMarshalEMVData(t *testing.T) {
-	// Your GPO data
-	gpodata, err := hex.DecodeString("77598202200057134147202500716749D26072011010041301051F5F200F43415244484F4C4445522F564953415F3401019F100706021203A000009F2608D0C669EEB70C58DD9F2701809F360200699F6C0200009F6E04207000009000")
+// Helper function to test parsing and marshaling of EMV data
+func testEMVData(t *testing.T, rawData string) {
+	// Decode the raw EMV data from hex string
+	gpodata, err := hex.DecodeString(rawData)
 	if err != nil {
-		fmt.Printf("Error decoding hex: %v\n", err)
-		return
+		t.Fatalf("Error decoding hex: %v", err)
 	}
 
 	// Extract the status word (last 2 bytes)
@@ -21,6 +20,7 @@ func TestMarshalEMVData(t *testing.T) {
 	statusWord := gpodata[dataLen-2:]
 	emvData := gpodata[:dataLen-2] // Remove status word from EMV data
 
+	fmt.Printf("\n=== Testing EMV Data ===\n")
 	fmt.Printf("Original data length: %d bytes\n", len(gpodata))
 	fmt.Printf("Status Word: %X\n", statusWord)
 	fmt.Printf("Original EMV data: %X\n", emvData)
@@ -31,8 +31,7 @@ func TestMarshalEMVData(t *testing.T) {
 	// Parse the data using the parser
 	parsedData, err := parser.Parse(emvData)
 	if err != nil {
-		fmt.Printf("Error parsing EMV data: %v\n", err)
-		return
+		t.Fatalf("Error parsing EMV data: %v", err)
 	}
 
 	// Print parsed data with descriptions
@@ -42,8 +41,7 @@ func TestMarshalEMVData(t *testing.T) {
 	// Re-encode the data using the parser
 	reEncodedData, err := parser.Marshal(parsedData)
 	if err != nil {
-		fmt.Printf("Error re-encoding EMV data: %v\n", err)
-		return
+		t.Fatalf("Error re-encoding EMV data: %v", err)
 	}
 
 	// Print re-encoded data
@@ -59,12 +57,20 @@ func TestMarshalEMVData(t *testing.T) {
 	// Parse the re-encoded data using the parser
 	reparsedData, err := parser.Parse(reEncodedData)
 	if err != nil {
-		fmt.Printf("Error re-parsing EMV data: %v\n", err)
-		return
+		t.Fatalf("Error re-parsing EMV data: %v", err)
 	}
 
 	// Compare the original struct and re-parsed struct
 	compareStructs(parsedData, reparsedData)
+}
+
+// Test case for multiple EMV data inputs
+func TestMultipleEMVData(t *testing.T) {
+	// Test case 1: Original GPO data
+	testEMVData(t, "77598202200057134147202500716749D26072011010041301051F5F200F43415244484F4C4445522F564953415F3401019F100706021203A000009F2608D0C669EEB70C58DD9F2701809F360200699F6C0200009F6E04207000009000")
+
+	// Test case 2: New EMV data
+	testEMVData(t, "6F30840E325041592E5359532E4444463031A51EBF0C1B61194F07A0000000031010500B56495341204352454449548701019000")
 }
 
 // printEMVDataWithDescriptions prints the parsed EMV data with tag descriptions
