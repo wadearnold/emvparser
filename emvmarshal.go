@@ -9,7 +9,7 @@ import (
 
 // EMVData represents a parsed EMV record with fields mapped to EMV tags
 type EMVData struct {
-	ResponseMessageTemplate1    []byte `emv:"77" json:"responseMessageTemplate1"`
+	ResponseMessageTemplate     []byte `emv:"77" json:"responseMessageTemplate1"`
 	AIP                         []byte `emv:"82" json:"applicationInterchangeProfile"`
 	TrackData                   []byte `emv:"57" json:"track2EquivalentData"`
 	CardholderName              string `emv:"5F20" json:"cardholderName"`
@@ -646,6 +646,10 @@ func (parser *EMVParser) Marshal(data *EMVData) ([]byte, error) {
 	result := []byte{}
 	v := reflect.ValueOf(data).Elem()
 
+	// Map to temporarily store tag-value pairs
+	tlvMap := make(map[string][]byte)
+
+	// Collect all non-empty fields
 	for tag, fieldInfo := range parser.tagMap {
 		field := v.Field(fieldInfo.Index)
 		if isZeroValue(field) {
@@ -662,7 +666,33 @@ func (parser *EMVParser) Marshal(data *EMVData) ([]byte, error) {
 		// Apply formatting
 		value = formatValueForTag(value, tag)
 
-		// Encode TLV
+		// Store in map
+		tlvMap[tag] = value
+	}
+
+	// Special handling for template tag 77 (Response Message Template Format 1)
+	if _, exists := tlvMap["77"]; exists {
+		// Template should be the outer tag
+		innerTLVs := []byte{}
+
+		// Build nested TLVs for all other tags
+		for tag, value := range tlvMap {
+			if tag == "77" {
+				continue // Skip the outer tag itself
+			}
+
+			// Encode this TLV
+			tlv := encodeTLV(tag, value)
+			innerTLVs = append(innerTLVs, tlv...)
+		}
+
+		// Combine nested TLVs into the outer tag
+		result = encodeTLV("77", innerTLVs)
+		return result, nil
+	}
+
+	// If no template tag 77, build all tags normally
+	for tag, value := range tlvMap {
 		tlv := encodeTLV(tag, value)
 		result = append(result, tlv...)
 	}
