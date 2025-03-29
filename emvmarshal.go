@@ -429,30 +429,26 @@ func (parser *EMVParser) Marshal(data *EMVData) ([]byte, error) {
 	}
 
 	// Special handling for template tag 77 (Response Message Template Format 1)
-	if _, exists := tlvMap["77"]; exists {
-		// Template should be the outer tag
-		innerTLVs := []byte{}
-
-		// Build nested TLVs for all other tags
-		for tag, value := range tlvMap {
-			if tag == "77" {
-				continue // Skip the outer tag itself
-			}
-
-			// Encode this TLV
-			tlv := encodeTLV(tag, value)
-			innerTLVs = append(innerTLVs, tlv...)
+	innerTLVs := []byte{}
+	for tag, value := range tlvMap {
+		if tag == "77" {
+			continue // Skip the outer tag itself for now
 		}
 
-		// Combine nested TLVs into the outer tag
-		result = encodeTLV("77", innerTLVs)
-		return result, nil
+		// Encode this TLV
+		tlv := encodeTLV(tag, value)
+		innerTLVs = append(innerTLVs, tlv...)
 	}
 
-	// If no template tag 77, build all tags normally
-	for tag, value := range tlvMap {
-		tlv := encodeTLV(tag, value)
-		result = append(result, tlv...)
+	// If there are nested TLVs, wrap them in tag 77
+	if len(innerTLVs) > 0 {
+		result = encodeTLV("77", innerTLVs)
+	} else {
+		// If no tag 77, build all tags normally
+		for tag, value := range tlvMap {
+			tlv := encodeTLV(tag, value)
+			result = append(result, tlv...)
+		}
 	}
 
 	return result, nil
