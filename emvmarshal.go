@@ -108,15 +108,14 @@ func NewEMVParser() *EMVParser {
 	}
 }
 
-// Simplified EMV TLV parser for this test
-func parseEMVData(data []byte) (*EMVData, error) {
-	// Parse TLV data (simplified for test)
+// Parse EMV data using the parser
+func (parser *EMVParser) Parse(data []byte) (*EMVData, error) {
 	tagValues := make(map[string][]byte)
 
-	// Start with position 0
+	// Start parsing at position 0
 	pos := 0
 	for pos < len(data) {
-		// Check if we have at least 1 byte for tag
+		// Ensure we have at least 1 byte for the tag
 		if pos >= len(data) {
 			break
 		}
@@ -125,36 +124,35 @@ func parseEMVData(data []byte) (*EMVData, error) {
 		tagLen := 1
 		if (data[pos] & 0x1F) == 0x1F {
 			tagLen = 2
-			// Ensure we have enough bytes
+			// Ensure we have enough bytes for a 2-byte tag
 			if pos+1 >= len(data) {
 				return nil, fmt.Errorf("unexpected end of data when reading tag")
 			}
 		}
 
-		// Extract tag
+		// Extract the tag
 		tag := data[pos : pos+tagLen]
 		pos += tagLen
 
-		// Ensure we have at least 1 byte for length
+		// Ensure we have at least 1 byte for the length
 		if pos >= len(data) {
 			return nil, fmt.Errorf("unexpected end of data when reading length")
 		}
 
-		// Determine length bytes
+		// Determine the length of the value
 		lenByte := data[pos]
 		pos++
 
-		var valueLen int
+		valueLen := 0
 		if (lenByte & 0x80) != 0 {
-			// Length is in next N bytes where N is (lenByte & 0x7F)
+			// Length is in the next N bytes where N is (lenByte & 0x7F)
 			lenBytes := int(lenByte & 0x7F)
 			if pos+lenBytes > len(data) {
 				return nil, fmt.Errorf("unexpected end of data when reading extended length")
 			}
 
 			// Calculate length from multiple bytes
-			valueLen = 0
-			for range lenBytes {
+			for i := 0; i < lenBytes; i++ {
 				valueLen = (valueLen << 8) | int(data[pos])
 				pos++
 			}
@@ -163,187 +161,52 @@ func parseEMVData(data []byte) (*EMVData, error) {
 			valueLen = int(lenByte)
 		}
 
-		// Ensure we have enough bytes for value
+		// Ensure we have enough bytes for the value
 		if pos+valueLen > len(data) {
 			return nil, fmt.Errorf("unexpected end of data when reading value")
 		}
 
-		// Extract value
+		// Extract the value
 		value := data[pos : pos+valueLen]
 		pos += valueLen
 
-		// Store in map
-		tagHex := hex.EncodeToString(tag)
-		tagHex = fmt.Sprintf("%X", tag) // Uppercase
-		tagValues[tagHex] = value
-
-		// Process constructed tags (recursively)
+		// Check if the tag is a constructed tag (6th bit of the first byte is set)
 		if (tag[0] & 0x20) != 0 {
-			// This is a constructed tag, parse its value
-			subTags, err := parseConstructedValue(value)
+			// This is a constructed tag, recursively parse its value
+			subTags, err := parser.Parse(value)
 			if err != nil {
-				continue // Skip if error parsing constructed value
+				return nil, fmt.Errorf("error parsing constructed tag %X: %v", tag, err)
 			}
 
-			// Add sub-tags to main map
-			for subTag, subValue := range subTags {
+			// Add sub-tags to the main map
+			for subTag, subValue := range subTags.toMap() {
 				tagValues[subTag] = subValue
 			}
+		} else {
+			// Store the tag and value in the map
+			tagHex := fmt.Sprintf("%X", tag) // Convert tag to uppercase hex string
+			tagValues[tagHex] = value
 		}
 	}
 
-	// Create EMVData struct and populate
+	// Create an EMVData struct and populate its fields
 	result := &EMVData{}
-
-	// Use reflection to set struct fields
 	v := reflect.ValueOf(result).Elem()
-	t := v.Type()
 
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
-		tag := t.Field(i).Tag.Get("emv")
-
-		if tag == "" {
-			continue
-		}
-
-		value, ok := tagValues[tag]
+	for tag, value := range tagValues {
+		fieldInfo, ok := parser.tagMap[tag]
 		if !ok {
-			continue
+			// Log unknown tag
+			log.Fatalf("Warning: Tag %s found in data but not defined in EMVData\n", tag)
+			continue // Skip unknown tags
 		}
 
-		// Set field value
+		field := v.Field(fieldInfo.Index)
 		if field.Kind() == reflect.Slice && field.Type().Elem().Kind() == reflect.Uint8 {
 			field.SetBytes(value)
 		} else if field.Kind() == reflect.String {
 			field.SetString(string(value))
 		}
-	}
-
-	return result, nil
-}
-
-// Parse constructed TLV value
-func parseConstructedValue(data []byte) (map[string][]byte, error) {
-	result := make(map[string][]byte)
-
-	// Simplified parsing logic for constructed tags
-	pos := 0
-	for pos < len(data) {
-		// Similar to main parsing but simplified
-		if pos+1 >= len(data) {
-			break
-		}
-
-		// Determine tag length
-		tagLen := 1
-		if (data[pos] & 0x1F) == 0x1F {
-			tagLen = 2
-			if pos+1 >= len(data) {
-				return result, nil
-			}
-		}
-
-		tag := data[pos : pos+tagLen]
-		pos += tagLen
-
-		if pos >= len(data) {
-			return result, nil
-		}
-
-		lenByte := data[pos]
-		pos++
-
-		var valueLen int
-		if (lenByte & 0x80) != 0 {
-			lenBytes := int(lenByte & 0x7F)
-			if pos+lenBytes > len(data) {
-				return result, nil
-			}
-
-			valueLen = 0
-			for i := 0; i < lenBytes; i++ {
-				valueLen = (valueLen << 8) | int(data[pos])
-				pos++
-			}
-		} else {
-			valueLen = int(lenByte)
-		}
-
-		if pos+valueLen > len(data) {
-			return result, nil
-		}
-
-		value := data[pos : pos+valueLen]
-		pos += valueLen
-
-		tagHex := fmt.Sprintf("%X", tag) // Uppercase
-		result[tagHex] = value
-	}
-
-	return result, nil
-}
-
-// Custom marshaler for EMV data
-func marshalEMVData(data *EMVData) ([]byte, error) {
-	// Start with empty result
-	result := []byte{}
-
-	// Use reflection to get struct fields
-	v := reflect.ValueOf(data).Elem()
-	t := v.Type()
-
-	// Map to temporarily store tag-value pairs
-	tlvMap := make(map[string][]byte)
-
-	// First collect all non-empty fields
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
-		tag := t.Field(i).Tag.Get("emv")
-
-		if tag == "" || isZeroValue(field) {
-			continue
-		}
-
-		// Get value as bytes
-		var value []byte
-		if field.Kind() == reflect.Slice && field.Type().Elem().Kind() == reflect.Uint8 {
-			value = field.Bytes()
-		} else if field.Kind() == reflect.String {
-			value = []byte(field.String())
-		} else {
-			continue
-		}
-
-		// Apply formatting based on tag
-		value = formatValueForTag(value, tag)
-
-		// Store in map
-		tlvMap[tag] = value
-	}
-
-	// Special handling for template tag 77 (Response Message Template Format 1)
-	if templateData, exists := tlvMap["77"]; exists {
-		// Template should be the outer tag
-		result = encodeTLV("77", templateData)
-		return result, nil
-	}
-
-	// Build all other tags
-	var innerTLVs []byte
-	for tag, value := range tlvMap {
-		if tag == "77" {
-			continue // Skip template tag, handled separately
-		}
-
-		// Encode this TLV
-		tlv := encodeTLV(tag, value)
-		innerTLVs = append(innerTLVs, tlv...)
-	}
-
-	// For the GPO response, everything should be inside template 77
-	if len(innerTLVs) > 0 {
-		result = encodeTLV("77", innerTLVs)
 	}
 
 	return result, nil
@@ -510,111 +373,6 @@ func extractTLVs(data []byte) map[string][]byte {
 	}
 
 	return result
-}
-
-// Parse EMV data using the parser
-func (parser *EMVParser) Parse(data []byte) (*EMVData, error) {
-	tagValues := make(map[string][]byte)
-
-	// Start parsing at position 0
-	pos := 0
-	for pos < len(data) {
-		// Ensure we have at least 1 byte for the tag
-		if pos >= len(data) {
-			break
-		}
-
-		// Determine tag length (1 or 2 bytes)
-		tagLen := 1
-		if (data[pos] & 0x1F) == 0x1F {
-			tagLen = 2
-			// Ensure we have enough bytes for a 2-byte tag
-			if pos+1 >= len(data) {
-				return nil, fmt.Errorf("unexpected end of data when reading tag")
-			}
-		}
-
-		// Extract the tag
-		tag := data[pos : pos+tagLen]
-		pos += tagLen
-
-		// Ensure we have at least 1 byte for the length
-		if pos >= len(data) {
-			return nil, fmt.Errorf("unexpected end of data when reading length")
-		}
-
-		// Determine the length of the value
-		lenByte := data[pos]
-		pos++
-
-		valueLen := 0
-		if (lenByte & 0x80) != 0 {
-			// Length is in the next N bytes where N is (lenByte & 0x7F)
-			lenBytes := int(lenByte & 0x7F)
-			if pos+lenBytes > len(data) {
-				return nil, fmt.Errorf("unexpected end of data when reading extended length")
-			}
-
-			// Calculate length from multiple bytes
-			for i := 0; i < lenBytes; i++ {
-				valueLen = (valueLen << 8) | int(data[pos])
-				pos++
-			}
-		} else {
-			// Length is in this byte
-			valueLen = int(lenByte)
-		}
-
-		// Ensure we have enough bytes for the value
-		if pos+valueLen > len(data) {
-			return nil, fmt.Errorf("unexpected end of data when reading value")
-		}
-
-		// Extract the value
-		value := data[pos : pos+valueLen]
-		pos += valueLen
-
-		// Check if the tag is a constructed tag (6th bit of the first byte is set)
-		if (tag[0] & 0x20) != 0 {
-			// This is a constructed tag, recursively parse its value
-			subTags, err := parser.Parse(value)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing constructed tag %X: %v", tag, err)
-			}
-
-			// Add sub-tags to the main map
-			for subTag, subValue := range subTags.toMap() {
-				tagValues[subTag] = subValue
-			}
-		} else {
-			// Store the tag and value in the map
-			tagHex := fmt.Sprintf("%X", tag) // Convert tag to uppercase hex string
-			tagValues[tagHex] = value
-		}
-	}
-
-	// Create an EMVData struct and populate its fields
-	result := &EMVData{}
-	v := reflect.ValueOf(result).Elem()
-
-	for tag, value := range tagValues {
-		fieldInfo, ok := parser.tagMap[tag]
-		if !ok {
-			// Log unknown tag
-
-			log.Fatalf("Warning: Tag %s found in data but not defined in EMVData\n", tag)
-			continue // Skip unknown tags
-		}
-
-		field := v.Field(fieldInfo.Index)
-		if field.Kind() == reflect.Slice && field.Type().Elem().Kind() == reflect.Uint8 {
-			field.SetBytes(value)
-		} else if field.Kind() == reflect.String {
-			field.SetString(string(value))
-		}
-	}
-
-	return result, nil
 }
 
 // Helper method to convert EMVData to a map for nested tag handling
