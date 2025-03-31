@@ -14,7 +14,7 @@ This library provides functionality to parse and marshal EMV (Europay, Mastercar
 To use this library, you can clone the repository or include it in your Go project:
 
 ```bash
-git clone https://github.com/your-repo/emv-parser.git
+git clone https://github.com/wadearnold/emvparser.git
 ```
 
 ## Usage
