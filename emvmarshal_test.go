@@ -1,4 +1,4 @@
-package marshalDe55
+package emvparser
 
 import (
 	"encoding/hex"
@@ -290,5 +290,42 @@ func TestMarshalExcludesNonDE55Tags(t *testing.T) {
 		if _, exists := decodedTags[tag]; !exists {
 			t.Errorf("Tag %s should appear in the output", tag)
 		}
+	}
+}
+func TestGetEMVPropertyByTag(t *testing.T) {
+	// Create an EMVParser instance
+	parser := NewEMVParser()
+
+	// Populate the EMVData instance with some test data
+	parser.data = &EMVData{
+		IssuerAppData:                 []byte{0x12, 0x34, 0x56}, // Tag 9F10
+		ApplicationTransactionCounter: []byte{0x00, 0x01},       // Tag 9F36
+		ApplicationLabel:              "VISA",                   // Tag 50
+	}
+
+	// Test case 1: Retrieve an existing tag (9F10 - Issuer Application Data)
+	tag := "9F10"
+	value, err := parser.GetEMVPropertyByTag(tag)
+	if err != nil {
+		t.Fatalf("Error retrieving tag %s: %v", tag, err)
+	}
+	expectedValue := []byte{0x12, 0x34, 0x56}
+	if string(value) != string(expectedValue) {
+		t.Errorf("Expected value for tag %s: %X, got: %X", tag, expectedValue, value)
+	} else {
+		fmt.Printf("Tag %s retrieved successfully: %X\n", tag, value)
+	}
+
+	// Test case 2: Retrieve another existing tag (50 - Application Label)
+	tag = "50"
+	value, err = parser.GetEMVPropertyByTag(tag)
+	if err != nil {
+		t.Fatalf("Error retrieving tag %s: %v", tag, err)
+	}
+	expectedLabel := "VISA"
+	if string(value) != expectedLabel {
+		t.Errorf("Expected value for tag %s: %s, got: %s", tag, expectedLabel, string(value))
+	} else {
+		fmt.Printf("Tag %s retrieved successfully: %s\n", tag, string(value))
 	}
 }

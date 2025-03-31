@@ -1,4 +1,4 @@
-package marshalDe55
+package emvparser
 
 import (
 	"encoding/hex"
@@ -110,6 +110,7 @@ func BuildEMVTagMap(structType reflect.Type) EMVTagMap {
 // EMVParser handles parsing and mapping of EMV data
 type EMVParser struct {
 	tagMap EMVTagMap
+	data   *EMVData
 }
 
 // NewEMVParser creates a new EMV parser for the given struct type
@@ -119,6 +120,7 @@ func NewEMVParser() *EMVParser {
 
 	return &EMVParser{
 		tagMap: tagMap,
+		data:   &EMVData{},
 	}
 }
 
@@ -203,15 +205,13 @@ func (parser *EMVParser) Parse(data []byte) (*EMVData, error) {
 		}
 	}
 
-	// Create an EMVData struct and populate its fields
-	result := &EMVData{}
-	v := reflect.ValueOf(result).Elem()
-
+	// Populate the internal EMVData instance
+	v := reflect.ValueOf(parser.data).Elem()
 	for tag, value := range tagValues {
 		fieldInfo, ok := parser.tagMap[tag]
 		if !ok {
 			// Log unknown tag
-			log.Fatalf("Warning: Tag %s found in data but not defined in EMVData\n", tag)
+			log.Printf("Warning: Tag %s found in data but not defined in EMVData\n", tag)
 			continue // Skip unknown tags
 		}
 
@@ -223,7 +223,7 @@ func (parser *EMVParser) Parse(data []byte) (*EMVData, error) {
 		}
 	}
 
-	return result, nil
+	return parser.data, nil
 }
 
 // Format a value according to the EMV tag format
@@ -455,4 +455,30 @@ func (parser *EMVParser) Marshal(data *EMVData) ([]byte, error) {
 	}
 
 	return result, nil
+}
+
+// GetEMVPropertyByTag retrieves the value of an EMV property from the internal EMVData instance based on the provided EMV tag.
+func (parser *EMVParser) GetEMVPropertyByTag(tag string) ([]byte, error) {
+	// Use reflection to access the fields of the EMVData struct
+	v := reflect.ValueOf(parser.data).Elem()
+	t := v.Type()
+
+	// Iterate through the fields of the struct
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		fieldTag := t.Field(i).Tag.Get("emv")
+
+		// Check if the field's EMV tag matches the input tag
+		if fieldTag == tag {
+			// Return the value as a byte slice
+			if field.Kind() == reflect.Slice && field.Type().Elem().Kind() == reflect.Uint8 {
+				return field.Bytes(), nil
+			} else if field.Kind() == reflect.String {
+				return []byte(field.String()), nil
+			}
+		}
+	}
+
+	// Return an error if the tag is not found
+	return nil, fmt.Errorf("tag %s not found in EMVData", tag)
 }
