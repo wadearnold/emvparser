@@ -1,4 +1,4 @@
-package kernel
+package marshalDe55
 
 import (
 	"encoding/hex"
@@ -250,5 +250,45 @@ func compareEMVData(original, reEncoded []byte) {
 
 	if !diffFound {
 		fmt.Println("  No TLV differences found!")
+	}
+}
+
+func TestMarshalExcludesNonDE55Tags(t *testing.T) {
+	// Create an EMVData instance with values for both DE55 and non-DE55 tags
+	data := &EMVData{
+		ResponseMessageTemplate:       []byte{0x01, 0x02, 0x03},                   // Tag 77 (non-DE55)
+		ApplicationIdentifier:         []byte{0xA0, 0x00, 0x00, 0x03, 0x10, 0x10}, // Tag 4F (non-DE55)
+		IssuerAppData:                 []byte{0x12, 0x34, 0x56},                   // Tag 9F10 (DE55)
+		ApplicationCryptogram:         []byte{0xAB, 0xCD, 0xEF},                   // Tag 9F26 (DE55)
+		ApplicationTransactionCounter: []byte{0x00, 0x01},                         // Tag 9F36 (DE55)
+		FileControlInformation:        []byte{0x6F, 0x01},                         // Tag 6F (non-DE55)
+	}
+
+	// Create a new EMVParser
+	parser := NewEMVParser()
+
+	// Marshal the data
+	marshaledData, err := parser.Marshal(data)
+	if err != nil {
+		t.Fatalf("Error marshaling EMV data: %v", err)
+	}
+
+	// Decode the marshaled data into a map of tags
+	decodedTags := extractTLVs(marshaledData)
+
+	// Verify that non-DE55 tags are not present
+	nonDE55Tags := []string{"77", "6F", "BF0C", "A5"}
+	for _, tag := range nonDE55Tags {
+		if _, exists := decodedTags[tag]; exists {
+			t.Errorf("Tag %s should not appear in the output", tag)
+		}
+	}
+
+	// Verify that DE55 tags are present
+	de55Tags := []string{"9F10", "9F26", "9F36"}
+	for _, tag := range de55Tags {
+		if _, exists := decodedTags[tag]; !exists {
+			t.Errorf("Tag %s should appear in the output", tag)
+		}
 	}
 }

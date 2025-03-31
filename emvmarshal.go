@@ -1,4 +1,4 @@
-package kernel
+package marshalDe55
 
 import (
 	"encoding/hex"
@@ -9,26 +9,27 @@ import (
 
 // EMVData represents a parsed EMV record with fields mapped to EMV tags
 type EMVData struct {
-	ResponseMessageTemplate      []byte `emv:"77" json:"responseMessageTemplate1"`
-	AIP                          []byte `emv:"82" json:"applicationInterchangeProfile"`
-	TrackData                    []byte `emv:"57" json:"track2EquivalentData"`
-	CardholderName               string `emv:"5F20" json:"cardholderName"`
-	ApplicationExpDate           []byte `emv:"5F24" json:"applicationExpirationDate"`
-	IssuerAppData                []byte `emv:"9F10" json:"issuerApplicationData"`
-	ATC                          []byte `emv:"9F36" json:"applicationTransactionCounter"`
-	PinTryCounter                []byte `emv:"9F17" json:"pinTryCounter"`
-	TransactionStatusInfo        []byte `emv:"9F6E" json:"transactionStatusInformation"`
-	CardTransactionQualifier     []byte `emv:"9F6C" json:"cardTransactionQualifier"`
-	UnpredictableNumber          []byte `emv:"9F37" json:"unpredictableNumber"`
-	ApplicationCryptogram        []byte `emv:"9F26" json:"applicationCryptogram"`
-	IssuerAuthData               []byte `emv:"91" json:"issuerAuthenticationData"`
-	PanSequenceNumber            []byte `emv:"5F34" json:"panSequenceNumber"`
-	CryptogramInformationData    []byte `emv:"9F47" json:"cryptogramInformationData"`
-	IntegredCircuitLevelResults  []byte `emv:"9F27" json:"integratedCircuitLevelResults"`
-	ApplicationIdentifier        []byte `emv:"4F" json:"applicationIdentifier"`
-	ApplicationLabel             string `emv:"50" json:"applicationLabel"`
-	ApplicationPriorityIndicator []byte `emv:"87" json:"applicationPriorityIndicator"`
-	DedicatedFileName            []byte `emv:"84" json:"dedicatedFileName"`
+	ResponseMessageTemplate       []byte `emv:"77" json:"responseMessageTemplate1"`
+	AIP                           []byte `emv:"82" json:"applicationInterchangeProfile"`
+	TrackData                     []byte `emv:"57" json:"track2EquivalentData"`
+	CardholderName                string `emv:"5F20" json:"cardholderName"`
+	ApplicationExpDate            []byte `emv:"5F24" json:"applicationExpirationDate"`
+	IssuerAppData                 []byte `emv:"9F10" json:"issuerApplicationData"`
+	PinTryCounter                 []byte `emv:"9F17" json:"pinTryCounter"`
+	TransactionStatusInfo         []byte `emv:"9F6E" json:"transactionStatusInformation"`
+	CardTransactionQualifier      []byte `emv:"9F6C" json:"cardTransactionQualifier"`
+	UnpredictableNumber           []byte `emv:"9F37" json:"unpredictableNumber"`
+	ApplicationCryptogram         []byte `emv:"9F26" json:"applicationCryptogram"`
+	IssuerAuthData                []byte `emv:"91" json:"issuerAuthenticationData"`
+	PanSequenceNumber             []byte `emv:"5F34" json:"panSequenceNumber"`
+	CryptogramInformationData     []byte `emv:"9F47" json:"cryptogramInformationData"`
+	IntegredCircuitLevelResults   []byte `emv:"9F27" json:"integratedCircuitLevelResults"`
+	ApplicationIdentifier         []byte `emv:"4F" json:"applicationIdentifier"`
+	ApplicationLabel              string `emv:"50" json:"applicationLabel"`
+	ApplicationPriorityIndicator  []byte `emv:"87" json:"applicationPriorityIndicator"`
+	ApplicationTransactionCounter []byte `emv:"9F36" json:"applicationTransactionCounter"`
+	FileControlInformation        []byte `emv:"6F" json:"fileControlInformation"`
+	DedicatedFileName             []byte `emv:"84" json:"dedicatedFileName"`
 }
 
 // EMVTagFormat defines the expected format for a specific EMV tag
@@ -47,28 +48,33 @@ type EMVTagFormat struct {
 
 	// Description provides a human-readable description of the tag
 	Description string
+
+	// DE55 indicates whether the tag should be included in the DE55 data element
+	DE55 bool
 }
 
 // EMVTagFormats maps EMV tags to their expected format
 var EMVTagFormats = map[string]EMVTagFormat{
-	"4F":      {MinLength: 5, MaxLength: 16, PadLeft: false, Description: "Application Identifier (AID)"},
-	"50":      {MinLength: 0, MaxLength: 0, PadLeft: false, Description: "Application Label"},
-	"57":      {MinLength: 0, MaxLength: 37, PadLeft: false, Description: "Track 2 Equivalent Data"},
-	"5F20":    {MinLength: 0, MaxLength: 26, PadLeft: false, Description: "Cardholder Name"},
-	"5F24":    {MinLength: 3, MaxLength: 3, PadLeft: true, Description: "Application Expiration Date"},
-	"82":      {MinLength: 2, MaxLength: 2, PadLeft: true, Description: "Application Interchange Profile"},
-	"84":      {MinLength: 0, MaxLength: 0, PadLeft: false, Description: "Dedicated File Name"},
-	"87":      {MinLength: 0, MaxLength: 0, PadLeft: false, Description: "Application Priority Indicator"},
-	"9F10":    {MinLength: 0, MaxLength: 32, PadLeft: false, Description: "Issuer Application Data"},
-	"9F26":    {MinLength: 8, MaxLength: 8, PadLeft: true, Description: "Application Cryptogram"},
-	"9F36":    {MinLength: 2, MaxLength: 2, PadLeft: true, Description: "Application Transaction Counter"},
-	"9F37":    {MinLength: 4, MaxLength: 4, PadLeft: true, Description: "Unpredictable Number"},
-	"9F6C":    {MinLength: 2, MaxLength: 8, PadLeft: true, Description: "Card Transaction Qualifier"},
-	"9F6E":    {MinLength: 4, MaxLength: 4, PadLeft: true, Description: "Transaction Status Information"},
-	"77":      {MinLength: 0, MaxLength: 0, PadLeft: false, Description: "Response Message Template"},
-	"5F34":    {MinLength: 1, MaxLength: 1, PadLeft: true, Description: "PAN Sequence Number"},
-	"9F47":    {MinLength: 1, MaxLength: 1, PadLeft: false, Description: "Cryptogram Information Data (CID)"},
-	"9F27":    {MinLength: 1, MaxLength: 1, PadLeft: true, Description: "Integrated Circuit Level Results"},
+	"4F":      {MinLength: 5, MaxLength: 16, PadLeft: false, Description: "Application Identifier (AID)", DE55: false},
+	"50":      {MinLength: 0, MaxLength: 0, PadLeft: false, Description: "Application Label", DE55: false},
+	"57":      {MinLength: 0, MaxLength: 37, PadLeft: false, Description: "Track 2 Equivalent Data", DE55: false},
+	"5F20":    {MinLength: 0, MaxLength: 26, PadLeft: false, Description: "Cardholder Name", DE55: false},
+	"5F24":    {MinLength: 3, MaxLength: 3, PadLeft: true, Description: "Application Expiration Date", DE55: false},
+	"82":      {MinLength: 2, MaxLength: 2, PadLeft: true, Description: "Application Interchange Profile", DE55: true},
+	"84":      {MinLength: 0, MaxLength: 0, PadLeft: false, Description: "Dedicated File Name", DE55: false},
+	"87":      {MinLength: 0, MaxLength: 0, PadLeft: false, Description: "Application Priority Indicator", DE55: false},
+	"9F02":    {MinLength: 6, MaxLength: 6, PadLeft: true, Description: "Amount, Authorized (Numeric)", DE55: true},
+	"9F03":    {MinLength: 6, MaxLength: 6, PadLeft: true, Description: "Amount, Other (Numeric)", DE55: true},
+	"9F10":    {MinLength: 0, MaxLength: 32, PadLeft: false, Description: "Issuer Application Data", DE55: true},
+	"9F26":    {MinLength: 8, MaxLength: 8, PadLeft: true, Description: "Application Cryptogram", DE55: true},
+	"9F27":    {MinLength: 1, MaxLength: 1, PadLeft: true, Description: "Cryptogram Information Data", DE55: true},
+	"9F36":    {MinLength: 2, MaxLength: 2, PadLeft: true, Description: "Application Transaction Counter", DE55: true},
+	"9F37":    {MinLength: 4, MaxLength: 4, PadLeft: true, Description: "Unpredictable Number", DE55: true},
+	"95":      {MinLength: 5, MaxLength: 5, PadLeft: false, Description: "Terminal Verification Results", DE55: true},
+	"77":      {MinLength: 0, MaxLength: 0, PadLeft: false, Description: "Response Message Template", DE55: false},
+	"6F":      {MinLength: 0, MaxLength: 0, PadLeft: false, Description: "File Control Information (FCI) Template", DE55: false},
+	"BF0C":    {MinLength: 0, MaxLength: 0, PadLeft: false, Description: "File Control Information (Proprietary Template)", DE55: false},
+	"A5":      {MinLength: 0, MaxLength: 0, PadLeft: false, Description: "File Control Information (FCI) Issuer Discretionary Data", DE55: false},
 	"DEFAULT": {MinLength: 0, MaxLength: 0, PadLeft: false, Description: "Default Tag Format"},
 }
 
@@ -417,6 +423,12 @@ func (parser *EMVParser) Marshal(data *EMVData) ([]byte, error) {
 
 	// Collect all non-empty fields
 	for tag, fieldInfo := range parser.tagMap {
+		// Check if the tag is marked as DE55
+		format, ok := EMVTagFormats[tag]
+		if !ok || !format.DE55 {
+			continue // Skip tags not marked as DE55
+		}
+
 		field := v.Field(fieldInfo.Index)
 		if isZeroValue(field) {
 			continue
